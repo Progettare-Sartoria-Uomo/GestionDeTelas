@@ -121,7 +121,7 @@ export const LoginForm: React.FC = () => {
           </form>
           
           <div className="text-center text-xs text-muted-foreground/70">
-            Sistema seguro de gestión empresarial
+            
           </div>
         </CardContent>
       </Card>
