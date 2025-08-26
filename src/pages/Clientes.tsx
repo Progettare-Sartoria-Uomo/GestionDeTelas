@@ -15,6 +15,17 @@ import {
   DialogTrigger,
 } from '@/components/ui/dialog';
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '@/components/ui/alert-dialog';
+import {
   Table,
   TableBody,
   TableCell,
@@ -49,6 +60,7 @@ export default function Clientes() {
   const [clienteTelaSearch, setClienteTelaSearch] = useState('');
   const [clienteTelaFilter, setClienteTelaFilter] = useState<'todos' | 'tela' | 'forreria'>('todos');
   const [clienteTelaSort, setClienteTelaSort] = useState<'fecha_desc' | 'fecha_asc' | 'articulo' | 'metros'>('fecha_desc');
+  const [clienteToDelete, setClienteToDelete] = useState<Cliente | null>(null);
   
   const { toast } = useToast();
 
@@ -208,6 +220,7 @@ export default function Clientes() {
       if (error) throw error;
       
       await fetchClientes();
+      setClienteToDelete(null);
       toast({
         title: "Cliente eliminado",
         description: "El cliente ha sido eliminado del registro.",
@@ -398,13 +411,34 @@ export default function Clientes() {
                           >
                             <Edit className="h-4 w-4" />
                           </Button>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => handleDelete(cliente.id)}
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
+                          <AlertDialog>
+                            <AlertDialogTrigger asChild>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => setClienteToDelete(cliente)}
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            </AlertDialogTrigger>
+                            <AlertDialogContent>
+                              <AlertDialogHeader>
+                                <AlertDialogTitle>¿Estás seguro?</AlertDialogTitle>
+                                <AlertDialogDescription>
+                                  Esta acción no se puede deshacer. Se eliminará permanentemente el cliente "{cliente.nombre}" del sistema.
+                                </AlertDialogDescription>
+                              </AlertDialogHeader>
+                              <AlertDialogFooter>
+                                <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                                <AlertDialogAction 
+                                  onClick={() => handleDelete(cliente.id)}
+                                  className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                                >
+                                  Eliminar
+                                </AlertDialogAction>
+                              </AlertDialogFooter>
+                            </AlertDialogContent>
+                          </AlertDialog>
                         </div>
                       </TableCell>
                     </TableRow>
