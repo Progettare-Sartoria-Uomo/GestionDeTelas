@@ -10,7 +10,7 @@ import { Badge } from '@/components/ui/badge';
 import { Textarea } from '@/components/ui/textarea';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { useToast } from '@/hooks/use-toast';
-import { Plus, Search, Package, Eye, Edit, Trash2 } from 'lucide-react';
+import { Plus, Search, Package, Eye, Edit, Trash2, MessageCircle } from 'lucide-react';
 import OrderDetailsDialog from '@/components/OrderDetailsDialog';
 import EditOrderDialog from '@/components/EditOrderDialog';
 import DeleteConfirmDialog from '@/components/DeleteConfirmDialog';
@@ -57,7 +57,7 @@ interface DetalleOrden {
     articulo: string;
     color: string;
     tipo: string;
-  }
+  };
 }
 
 export default function OrdenesCorte() {
@@ -69,14 +69,14 @@ export default function OrdenesCorte() {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [loading, setLoading] = useState(false);
-    
+  
   // Dialog states
   const [selectedOrder, setSelectedOrder] = useState<OrdenCorte | null>(null);
   const [isDetailsDialogOpen, setIsDetailsDialogOpen] = useState(false);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [deleteLoading, setDeleteLoading] = useState(false);
-
+  
   // Formulario nueva orden
   const [numeroLote, setNumeroLote] = useState('');
   const [notasOrden, setNotasOrden] = useState('');
@@ -215,7 +215,7 @@ export default function OrdenesCorte() {
       });
       return;
     }
-    
+
     setLoading(true);
 
     try {
@@ -262,10 +262,10 @@ export default function OrdenesCorte() {
         description: "No se pudo crear la orden de corte. Intente nuevamente.",
         variant: "destructive",
       });
-      } finally {
+    } finally {
       setLoading(false);
     }
-    };
+  };
 
   const handleDeleteOrder = async () => {
     if (!selectedOrder) return;
@@ -321,6 +321,65 @@ export default function OrdenesCorte() {
   const openDeleteDialog = (orden: OrdenCorte) => {
     setSelectedOrder(orden);
     setIsDeleteDialogOpen(true);
+  };
+
+  const sendWhatsAppMessage = async (orden: OrdenCorte) => {
+    try {
+      // Fetch order details with fabrics info
+      const { data: detalles, error } = await supabase
+        .from('detalle_ordenes_corte')
+        .select(`
+          *,
+          telas (
+            articulo,
+            color,
+            tipo,
+            descripcion
+          )
+        `)
+        .eq('orden_id', orden.id);
+
+      if (error) throw error;
+
+      let message = `*ORDEN DE CORTE*\n\n`;
+      message += `📋 *Número de Lote:* ${orden.numero_lote}\n`;
+      message += `👤 *Cliente:* ${orden.clientes?.nombre || 'Cliente no encontrado'}\n`;
+      message += `📅 *Fecha:* ${new Date(orden.fecha_creacion).toLocaleDateString()}\n`;
+      message += `📊 *Estado:* ${orden.estado === 'pendiente' ? 'Pendiente' : orden.estado === 'en_proceso' ? 'En Proceso' : orden.estado === 'completado' ? 'Completado' : orden.estado}\n\n`;
+
+      if (detalles && detalles.length > 0) {
+        message += `🧵 *TELAS A CORTAR:*\n\n`;
+        detalles.forEach((detalle, index) => {
+          message += `${index + 1}. *${detalle.telas?.articulo || 'N/A'}*\n`;
+          message += `   • Color: ${detalle.telas?.color || 'N/A'}\n`;
+          message += `   • Tipo: ${detalle.telas?.tipo || 'N/A'}\n`;
+          message += `   • Metros a cortar: ${detalle.metros_cortar}m\n`;
+          if (detalle.observaciones) {
+            message += `   • Observaciones: ${detalle.observaciones}\n`;
+          }
+          message += `\n`;
+        });
+      }
+
+      if (orden.notas) {
+        message += `📝 *Notas adicionales:*\n${orden.notas}\n\n`;
+      }
+
+      message += `---\n✅ Orden generada automáticamente`;
+
+      const phoneNumber = '+5491167105625';
+      const encodedMessage = encodeURIComponent(message);
+      const whatsappUrl = `https://wa.me/${phoneNumber}?text=${encodedMessage}`;
+      
+      window.open(whatsappUrl, '_blank');
+    } catch (error) {
+      console.error('Error generating WhatsApp message:', error);
+      toast({
+        title: "Error",
+        description: "No se pudo generar el mensaje de WhatsApp.",
+        variant: "destructive",
+      });
+    }
   };
 
   const filteredOrdenes = ordenes.filter(orden => 
@@ -552,6 +611,14 @@ export default function OrdenesCorte() {
                           onClick={() => openEditDialog(orden)}
                         >
                           <Edit className="h-4 w-4" />
+                        </Button>
+                        <Button 
+                          variant="ghost" 
+                          size="sm"
+                          onClick={() => sendWhatsAppMessage(orden)}
+                          className="text-green-600 hover:text-green-700 hover:bg-green-50"
+                        >
+                          <MessageCircle className="h-4 w-4" />
                         </Button>
                         <Button 
                           variant="ghost" 
