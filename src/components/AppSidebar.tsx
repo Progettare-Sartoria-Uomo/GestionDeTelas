@@ -1,4 +1,4 @@
-import { Users, Package, Home, LogOut, Trash2 } from "lucide-react";
+import { Users, Package, Home, LogOut, Trash2, Scissors } from "lucide-react";
 import { NavLink, useLocation } from "react-router-dom";
 import { useAuth } from "./AuthProvider";
 import { ThemeToggle } from "./ThemeToggle";
@@ -23,6 +23,10 @@ const items = [
   { title: "Clientes", url: "/clientes", icon: Users },
   { title: "Telas", url: "/telas", icon: Package },
   { title: "Eliminados", url: "/eliminados", icon: Trash2 },
+  ];
+
+const orderItems = [
+  { title: "Órdenes de Corte", url: "/ordenes-corte", icon: Scissors },
 ];
 
 export function AppSidebar() {
@@ -57,6 +61,24 @@ export function AppSidebar() {
           <SidebarGroupContent>
             <SidebarMenu>
               {items.map((item) => (
+                <SidebarMenuItem key={item.title}>
+                  <SidebarMenuButton asChild>
+                    <NavLink to={item.url} end className={getNavCls}>
+                      <item.icon className="mr-2 h-4 w-4" />
+                      {state !== "collapsed" && <span>{item.title}</span>}
+                    </NavLink>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              ))}
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
+
+        <SidebarGroup>
+          <SidebarGroupLabel>Orden</SidebarGroupLabel>
+          <SidebarGroupContent>
+            <SidebarMenu>
+              {orderItems.map((item) => (
                 <SidebarMenuItem key={item.title}>
                   <SidebarMenuButton asChild>
                     <NavLink to={item.url} end className={getNavCls}>

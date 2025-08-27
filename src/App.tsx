@@ -11,6 +11,7 @@ import Dashboard from "./pages/Dashboard";
 import Clientes from "./pages/Clientes";
 import Telas from "./pages/Telas";
 import Eliminados from "./pages/Eliminados";
+import OrdenesCorte from "./pages/OrdenesCorte";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -30,6 +31,7 @@ function ProtectedRoutes() {
         <Route path="/clientes" element={<Clientes />} />
         <Route path="/telas" element={<Telas />} />
         <Route path="/eliminados" element={<Eliminados />} />
+        <Route path="/ordenes-corte" element={<OrdenesCorte />} />
         <Route path="*" element={<NotFound />} />
       </Routes>
     </Layout>

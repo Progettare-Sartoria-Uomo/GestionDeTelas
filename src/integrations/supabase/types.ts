@@ -47,6 +47,92 @@ export type Database = {
         }
         Relationships: []
       }
+       detalle_ordenes_corte: {
+        Row: {
+          created_at: string
+          id: string
+          metros_cortar: number
+          observaciones: string | null
+          orden_id: string
+          tela_id: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          metros_cortar: number
+          observaciones?: string | null
+          orden_id: string
+          tela_id: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          metros_cortar?: number
+          observaciones?: string | null
+          orden_id?: string
+          tela_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "fk_detalle_orden"
+            columns: ["orden_id"]
+            isOneToOne: false
+            referencedRelation: "ordenes_corte"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fk_detalle_tela"
+            columns: ["tela_id"]
+            isOneToOne: false
+            referencedRelation: "telas"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ordenes_corte: {
+        Row: {
+          cliente_id: string
+          created_at: string
+          estado: string
+          fecha_creacion: string
+          id: string
+          notas: string | null
+          numero_lote: string
+          updated_at: string
+        }
+        Insert: {
+          cliente_id: string
+          created_at?: string
+          estado?: string
+          fecha_creacion?: string
+          id?: string
+          notas?: string | null
+          numero_lote: string
+          updated_at?: string
+        }
+        Update: {
+          cliente_id?: string
+          created_at?: string
+          estado?: string
+          fecha_creacion?: string
+          id?: string
+          notas?: string | null
+          numero_lote?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "fk_ordenes_cliente"
+            columns: ["cliente_id"]
+            isOneToOne: false
+            referencedRelation: "clientes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       telas: {
         Row: {
           articulo: string
@@ -57,6 +143,7 @@ export type Database = {
           descripcion: string
           fecha_envio: string
           id: string
+          imagen_url: string | null
           metros: number
           patron: string
           tipo: string
@@ -71,6 +158,7 @@ export type Database = {
           descripcion: string
           fecha_envio: string
           id?: string
+          imagen_url?: string | null
           metros: number
           patron: string
           tipo: string
@@ -85,6 +173,7 @@ export type Database = {
           descripcion?: string
           fecha_envio?: string
           id?: string
+          imagen_url?: string | null
           metros?: number
           patron?: string
           tipo?: string

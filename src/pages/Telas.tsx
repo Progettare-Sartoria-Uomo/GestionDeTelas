@@ -5,7 +5,9 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Plus, Search, Edit, Trash2, Filter } from 'lucide-react';
+import { Plus, Search, Edit, Trash2, Filter, Eye, Upload } from 'lucide-react';
+import ImageViewer from '@/components/ImageViewer';
+import DeleteConfirmDialog from '@/components/DeleteConfirmDialog';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import {
@@ -46,6 +48,7 @@ interface Tela {
   patron: 'lisa' | 'fantasia';
   cliente_id?: string;
   created_at: string;
+  imagen_url?: string;
   clientes?: Cliente;
 }
 
@@ -58,6 +61,11 @@ export default function Telas() {
   const [sortByDate, setSortByDate] = useState<'reciente' | 'antiguo'>('reciente');
   const [editingTela, setEditingTela] = useState<Tela | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [selectedImage, setSelectedImage] = useState<string>('');
+  const [imageViewerOpen, setImageViewerOpen] = useState(false);
+  const [imageFile, setImageFile] = useState<File | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<Tela | null>(null);
+  const [deleteLoading, setDeleteLoading] = useState(false);
   const { toast } = useToast();
 
   const [formData, setFormData] = useState({
@@ -132,6 +140,30 @@ export default function Telas() {
       nuevoCliente: '',
     });
     setEditingTela(null);
+    setImageFile(null);
+  };
+
+  const uploadImage = async (file: File): Promise<string | null> => {
+    try {
+      const fileExt = file.name.split('.').pop();
+      const fileName = `${Math.random()}.${fileExt}`;
+      const filePath = fileName;
+
+      const { error: uploadError } = await supabase.storage
+        .from('fabric-images')
+        .upload(filePath, file);
+
+      if (uploadError) throw uploadError;
+
+      const { data } = supabase.storage
+        .from('fabric-images')
+        .getPublicUrl(filePath);
+
+      return data.publicUrl;
+    } catch (error) {
+      console.error('Error uploading image:', error);
+      return null;
+    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -140,6 +172,15 @@ export default function Telas() {
     
     try {
       let clienteId = formData.cliente_id;
+      let imagenUrl = editingTela?.imagen_url || null;
+      
+      // Upload image if selected
+      if (imageFile) {
+        const uploadedUrl = await uploadImage(imageFile);
+        if (uploadedUrl) {
+          imagenUrl = uploadedUrl;
+        }
+      }
       
       // Create new client if needed
       if (formData.nuevoCliente.trim() && !formData.cliente_id) {
@@ -163,6 +204,7 @@ export default function Telas() {
         tipo: formData.tipo,
         patron: formData.patron,
         cliente_id: clienteId && clienteId !== 'none' ? clienteId : null,
+        imagen_url: imagenUrl,
       };
 
       if (editingTela) {
@@ -221,12 +263,15 @@ export default function Telas() {
     setIsDialogOpen(true);
   };
 
-  const handleDelete = async (telaId: string) => {
+  const handleDelete = async () => {
+    if (!deleteTarget) return;
+    
+    setDeleteLoading(true);
     try {
       const { error } = await supabase
         .from('telas')
         .update({ deleted_at: new Date().toISOString() })
-        .eq('id', telaId);
+        .eq('id', deleteTarget.id);
 
       if (error) throw error;
       
@@ -235,6 +280,7 @@ export default function Telas() {
         title: "Tela eliminada",
         description: "La tela ha sido movida a la papelera.",
       });
+      setDeleteTarget(null);
     } catch (error) {
       console.error('Error deleting tela:', error);
       toast({
@@ -242,7 +288,14 @@ export default function Telas() {
         description: "No se pudo eliminar la tela.",
         variant: "destructive",
       });
+    } finally {
+      setDeleteLoading(false);
     }
+  };
+
+  const viewImage = (imageUrl: string, title: string) => {
+    setSelectedImage(imageUrl);
+    setImageViewerOpen(true);
   };
 
   const filteredTelas = telas.filter(tela => {
@@ -311,10 +364,29 @@ export default function Telas() {
                     required
                   />
                 </div>
-              </div>
-              
-              <div className="space-y-2">
-                <Label htmlFor="descripcion">Descripción</Label>
+               </div>
+
+               <div className="space-y-2">
+                 <Label htmlFor="imagen">Imagen de la Tela</Label>
+                 <div className="flex items-center gap-2">
+                   <Input
+                     id="imagen"
+                     type="file"
+                     accept="image/*"
+                     onChange={(e) => setImageFile(e.target.files?.[0] || null)}
+                     className="flex-1"
+                   />
+                   <Upload className="h-4 w-4 text-muted-foreground" />
+                 </div>
+                 {editingTela?.imagen_url && !imageFile && (
+                   <div className="text-sm text-muted-foreground">
+                     Imagen actual disponible
+                   </div>
+                 )}
+               </div>
+               
+               <div className="space-y-2">
+                 <Label htmlFor="descripcion">Descripción</Label>
                 <Textarea
                   id="descripcion"
                   value={formData.descripcion}
@@ -483,13 +555,14 @@ export default function Telas() {
                 <TableHeader>
                   <TableRow>
                     <TableHead>Artículo</TableHead>
-                    <TableHead className="hidden sm:table-cell">Color</TableHead>
-                    <TableHead>Metros</TableHead>
-                    <TableHead className="hidden md:table-cell">Tipo</TableHead>
-                    <TableHead className="hidden lg:table-cell">Patrón</TableHead>
-                    <TableHead className="hidden lg:table-cell">Cliente</TableHead>
-                    <TableHead className="hidden lg:table-cell">Fecha</TableHead>
-                    <TableHead className="text-right">Acciones</TableHead>
+                     <TableHead className="hidden sm:table-cell">Color</TableHead>
+                     <TableHead>Metros</TableHead>
+                     <TableHead className="hidden md:table-cell">Tipo</TableHead>
+                     <TableHead className="hidden lg:table-cell">Patrón</TableHead>
+                     <TableHead className="hidden lg:table-cell">Cliente</TableHead>
+                     <TableHead className="hidden lg:table-cell">Fecha</TableHead>
+                     <TableHead className="hidden xl:table-cell">Imagen</TableHead>
+                     <TableHead className="text-right">Acciones</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -524,26 +597,50 @@ export default function Telas() {
                       </TableCell>
                       <TableCell className="hidden lg:table-cell">{tela.clientes?.nombre || '-'}</TableCell>
                       <TableCell className="hidden lg:table-cell text-sm">
-                        {new Date(tela.fecha_envio).toLocaleDateString()}
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <div className="flex justify-end gap-1">
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => handleEdit(tela)}
-                          >
-                            <Edit className="h-4 w-4" />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => handleDelete(tela.id)}
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        </div>
-                      </TableCell>
+                         {new Date(tela.fecha_envio).toLocaleDateString()}
+                       </TableCell>
+                       <TableCell className="hidden xl:table-cell">
+                         {tela.imagen_url ? (
+                           <div className="w-12 h-12 bg-muted rounded-md overflow-hidden">
+                             <img 
+                               src={tela.imagen_url} 
+                               alt={tela.articulo}
+                               className="w-full h-full object-cover"
+                             />
+                           </div>
+                         ) : (
+                           <div className="w-12 h-12 bg-muted rounded-md flex items-center justify-center">
+                             <Upload className="h-4 w-4 text-muted-foreground" />
+                           </div>
+                         )}
+                       </TableCell>
+                       <TableCell className="text-right">
+                         <div className="flex justify-end gap-1">
+                           {tela.imagen_url && (
+                             <Button
+                               variant="ghost"
+                               size="sm"
+                               onClick={() => viewImage(tela.imagen_url!, `${tela.articulo} - ${tela.color}`)}
+                             >
+                               <Eye className="h-4 w-4" />
+                             </Button>
+                           )}
+                           <Button
+                             variant="ghost"
+                             size="sm"
+                             onClick={() => handleEdit(tela)}
+                           >
+                             <Edit className="h-4 w-4" />
+                           </Button>
+                           <Button
+                             variant="ghost"
+                             size="sm"
+                             onClick={() => setDeleteTarget(tela)}
+                           >
+                             <Trash2 className="h-4 w-4" />
+                           </Button>
+                         </div>
+                       </TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
@@ -552,6 +649,24 @@ export default function Telas() {
           )}
         </CardContent>
       </Card>
+
+      {/* Image Viewer Dialog */}
+      <ImageViewer
+        isOpen={imageViewerOpen}
+        onClose={() => setImageViewerOpen(false)}
+        imageUrl={selectedImage}
+        title="Imagen de Tela"
+      />
+
+      {/* Delete Confirmation Dialog */}
+      <DeleteConfirmDialog
+        isOpen={!!deleteTarget}
+        onClose={() => setDeleteTarget(null)}
+        onConfirm={handleDelete}
+        title="¿Eliminar tela?"
+        description={`¿Estás seguro de que deseas eliminar la tela ${deleteTarget?.articulo}? Esta acción moverá la tela a la papelera.`}
+        isLoading={deleteLoading}
+      />
     </div>
   );
 }
