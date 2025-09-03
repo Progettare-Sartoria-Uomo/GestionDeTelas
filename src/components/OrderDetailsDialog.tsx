@@ -35,6 +35,16 @@ interface DetalleOrden {
   };
 }
 
+interface PrendaOrden {
+  id: string;
+  orden_id: string;
+  nombre_prenda: string;
+  talles_prenda?: {
+    talle: string;
+    cantidad: number;
+  }[];
+}
+
 interface OrderDetailsDialogProps {
   isOpen: boolean;
   onClose: () => void;
@@ -43,11 +53,13 @@ interface OrderDetailsDialogProps {
 
 export default function OrderDetailsDialog({ isOpen, onClose, orden }: OrderDetailsDialogProps) {
   const [detalles, setDetalles] = useState<DetalleOrden[]>([]);
+  const [prendas, setPrendas] = useState<PrendaOrden[]>([]);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
     if (isOpen && orden) {
       fetchDetalles();
+      fetchPrendas();
     }
   }, [isOpen, orden]);
 
@@ -73,6 +85,26 @@ export default function OrderDetailsDialog({ isOpen, onClose, orden }: OrderDeta
       console.error('Error fetching order details:', error);
     } finally {
       setLoading(false);
+      }
+  };
+
+  const fetchPrendas = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('prendas_orden')
+        .select(`
+          *,
+          talles_prenda (
+            talle,
+            cantidad
+          )
+        `)
+        .eq('orden_id', orden.id);
+
+      if (error) throw error;
+      setPrendas(data || []);
+    } catch (error) {
+      console.error('Error fetching prendas:', error);
     }
   };
 
@@ -194,13 +226,49 @@ export default function OrderDetailsDialog({ isOpen, onClose, orden }: OrderDeta
             </CardContent>
           </Card>
 
+          {/* Prendas y Talles */}
+          <Card>
+            <CardHeader>
+              <CardTitle>Prendas y Talles</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {prendas.length === 0 ? (
+                <div className="text-center py-8 text-muted-foreground">
+                  No hay prendas registradas en esta orden
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {prendas.map((prenda) => (
+                    <div key={prenda.id} className="border rounded-lg p-4">
+                      <h4 className="font-medium text-lg mb-3">{prenda.nombre_prenda}</h4>
+                      {prenda.talles_prenda && prenda.talles_prenda.length > 0 ? (
+                        <div className="grid grid-cols-6 md:grid-cols-8 gap-2">
+                          {prenda.talles_prenda
+                            .sort((a, b) => Number(a.talle) - Number(b.talle))
+                            .map((talle) => (
+                            <div key={talle.talle} className="text-center p-2 bg-muted rounded">
+                              <div className="font-medium text-sm">{talle.talle}</div>
+                              <div className="text-xs text-muted-foreground">{talle.cantidad} pcs</div>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="text-muted-foreground text-sm">Sin talles definidos</p>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
           {/* Resumen */}
           <Card>
             <CardHeader>
               <CardTitle>Resumen</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                 <div className="text-center p-4 bg-muted rounded-lg">
                   <p className="text-2xl font-bold text-primary">{detalles.length}</p>
                   <p className="text-sm text-muted-foreground">Telas Diferentes</p>
@@ -212,10 +280,16 @@ export default function OrderDetailsDialog({ isOpen, onClose, orden }: OrderDeta
                   <p className="text-sm text-muted-foreground">Total Metros</p>
                 </div>
                 <div className="text-center p-4 bg-muted rounded-lg">
+                  <p className="text-2xl font-bold text-primary">{prendas.length}</p>
+                  <p className="text-sm text-muted-foreground">Prendas</p>
+                </div>
+                <div className="text-center p-4 bg-muted rounded-lg">
                   <p className="text-2xl font-bold text-primary">
-                    {detalles.filter(d => d.observaciones).length}
+                    {prendas.reduce((sum, prenda) => 
+                      sum + (prenda.talles_prenda?.reduce((talleSum, talle) => talleSum + talle.cantidad, 0) || 0)
+                    , 0)}
                   </p>
-                  <p className="text-sm text-muted-foreground">Con Observaciones</p>
+                  <p className="text-sm text-muted-foreground">Total Piezas</p>
                 </div>
               </div>
             </CardContent>

@@ -27,6 +27,25 @@ interface Cliente {
   nombre: string;
 }
 
+interface Tela {
+  id: string;
+  articulo: string;
+  color: string;
+  tipo: string;
+  metros: number;
+}
+
+interface PrendaOrden {
+  id: string;
+  orden_id: string;
+  nombre_prenda: string;
+  talles_prenda?: {
+    talle: string;
+    cantidad: number;
+  }[];
+}
+
+
 interface EditOrderDialogProps {
   isOpen: boolean;
   onClose: () => void;
@@ -37,6 +56,7 @@ interface EditOrderDialogProps {
 export default function EditOrderDialog({ isOpen, onClose, orden, onOrderUpdated }: EditOrderDialogProps) {
   const [loading, setLoading] = useState(false);
   const [clientes, setClientes] = useState<Cliente[]>([]);
+  const [prendas, setPrendas] = useState<PrendaOrden[]>([]);
   const [formData, setFormData] = useState({
     numero_lote: '',
     cliente_id: '',
@@ -55,6 +75,7 @@ export default function EditOrderDialog({ isOpen, onClose, orden, onOrderUpdated
         notas: orden.notas || ''
       });
       fetchClientes();
+      fetchPrendas();
     }
   }, [isOpen, orden]);
 
@@ -69,6 +90,26 @@ export default function EditOrderDialog({ isOpen, onClose, orden, onOrderUpdated
       setClientes(data || []);
     } catch (error) {
       console.error('Error fetching clientes:', error);
+      }
+  };
+
+  const fetchPrendas = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('prendas_orden')
+        .select(`
+          *,
+          talles_prenda (
+            talle,
+            cantidad
+          )
+        `)
+        .eq('orden_id', orden.id);
+
+      if (error) throw error;
+      setPrendas(data || []);
+    } catch (error) {
+      console.error('Error fetching prendas:', error);
     }
   };
 
@@ -110,11 +151,11 @@ export default function EditOrderDialog({ isOpen, onClose, orden, onOrderUpdated
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-lg">
+      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Edit3 className="h-5 w-5" />
-            Editar Orden de Corte
+            Editar Orden de Corte - {orden.numero_lote}
           </DialogTitle>
         </DialogHeader>
 
@@ -173,6 +214,32 @@ export default function EditOrderDialog({ isOpen, onClose, orden, onOrderUpdated
               rows={3}
             />
           </div>
+
+          {/* Información de Prendas (solo visualización) */}
+          {prendas.length > 0 && (
+            <div className="space-y-2">
+              <Label>Prendas en esta Orden (solo lectura)</Label>
+              <div className="border rounded-lg p-3 bg-muted/20 max-h-40 overflow-y-auto">
+                {prendas.map((prenda) => (
+                  <div key={prenda.id} className="mb-3 last:mb-0">
+                    <div className="font-medium text-sm">{prenda.nombre_prenda}</div>
+                    {prenda.talles_prenda && prenda.talles_prenda.length > 0 && (
+                      <div className="text-xs text-muted-foreground mt-1">
+                        Talles: {prenda.talles_prenda
+                          .sort((a, b) => Number(a.talle) - Number(b.talle))
+                          .map(t => `${t.talle}(${t.cantidad})`)
+                          .join(', ')
+                        }
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Para editar prendas y talles, elimina esta orden y crea una nueva.
+              </p>
+            </div>
+          )}
 
           <div className="flex gap-2 pt-4">
             <Button type="submit" className="flex-1" disabled={loading}>

@@ -133,6 +133,73 @@ export type Database = {
           },
         ]
       }
+      prendas_orden: {
+        Row: {
+          created_at: string
+          id: string
+          nombre_prenda: string
+          orden_id: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          nombre_prenda: string
+          orden_id: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          nombre_prenda?: string
+          orden_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "fk_prendas_orden_orden_id"
+            columns: ["orden_id"]
+            isOneToOne: false
+            referencedRelation: "ordenes_corte"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      talles_prenda: {
+        Row: {
+          cantidad: number
+          created_at: string
+          id: string
+          prenda_id: string
+          talle: string
+          updated_at: string
+        }
+        Insert: {
+          cantidad?: number
+          created_at?: string
+          id?: string
+          prenda_id: string
+          talle: string
+          updated_at?: string
+        }
+        Update: {
+          cantidad?: number
+          created_at?: string
+          id?: string
+          prenda_id?: string
+          talle?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "fk_talles_prenda_prenda_id"
+            columns: ["prenda_id"]
+            isOneToOne: false
+            referencedRelation: "prendas_orden"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       telas: {
         Row: {
           articulo: string

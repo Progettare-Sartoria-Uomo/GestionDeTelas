@@ -10,7 +10,7 @@ import { Badge } from '@/components/ui/badge';
 import { Textarea } from '@/components/ui/textarea';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { useToast } from '@/hooks/use-toast';
-import { Plus, Search, Package, Eye, Edit, Trash2, MessageCircle } from 'lucide-react';
+import { Plus, Search, Package, Eye, Edit, Trash2, MessageCircle, FileText } from 'lucide-react';
 import OrderDetailsDialog from '@/components/OrderDetailsDialog';
 import EditOrderDialog from '@/components/EditOrderDialog';
 import DeleteConfirmDialog from '@/components/DeleteConfirmDialog';
@@ -68,6 +68,7 @@ export default function OrdenesCorte() {
   const [telasCliente, setTelasCliente] = useState<Tela[]>([]);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
+  const [fabricSearchTerm, setFabricSearchTerm] = useState('');
   const [loading, setLoading] = useState(false);
   
   // Dialog states
@@ -81,6 +82,10 @@ export default function OrdenesCorte() {
   const [numeroLote, setNumeroLote] = useState('');
   const [notasOrden, setNotasOrden] = useState('');
   const [telasSeleccionadas, setTelasSeleccionadas] = useState<{tela_id: string, metros: number, observaciones: string}[]>([]);
+  const [prendasOrden, setPrendasOrden] = useState<{nombre: string, talles: Array<{ talle: string; cantidad: number; }>}[]>([]);
+  
+// Talles disponibles del 36 al 66 de 2 en 2 (pares)
+  const tallesDisponibles = Array.from({ length: 16 }, (_, i) => (36 + i * 2).toString());
 
   const { toast } = useToast();
 
@@ -194,6 +199,26 @@ export default function OrdenesCorte() {
     );
   };
 
+  const agregarPrenda = () => {
+    setPrendasOrden([...prendasOrden, { nombre: '', talles: [] }]);
+  };
+
+  const actualizarNombrePrenda = (index: number, nombre: string) => {
+    setPrendasOrden(prev => 
+      prev.map((p, i) => i === index ? { ...p, nombre } : p)
+    );
+  };
+
+  const removerPrenda = (index: number) => {
+    setPrendasOrden(prev => prev.filter((_, i) => i !== index));
+  };
+
+  const actualizarTallesPrenda = (prendaIndex: number, talles: Array<{ talle: string; cantidad: number; }>) => {
+    setPrendasOrden(prev => 
+      prev.map((p, i) => i === prendaIndex ? { ...p, talles } : p)
+    );
+  };
+
   const removerTelaDeOrden = (telaId: string) => {
     setTelasSeleccionadas(prev => prev.filter(t => t.tela_id !== telaId));
   };
@@ -204,13 +229,24 @@ export default function OrdenesCorte() {
     setNumeroLote('');
     setNotasOrden('');
     setTelasSeleccionadas([]);
+    setPrendasOrden([]);
   };
 
   const crearOrden = async () => {
-    if (!clienteSeleccionado || !numeroLote || telasSeleccionadas.length === 0) {
+    if (!clienteSeleccionado || !numeroLote || telasSeleccionadas.length === 0 || prendasOrden.length === 0) {
       toast({
         title: "Datos incompletos",
-        description: "Debe seleccionar un cliente, generar número de lote y agregar al menos una tela.",
+        description: "Debe seleccionar un cliente, generar número de lote, agregar telas y crear al menos una prenda.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    // Verificar que todas las prendas tengan nombre
+    if (prendasOrden.some(p => !p.nombre.trim())) {
+      toast({
+        title: "Datos incompletos",
+        description: "Todas las prendas deben tener un nombre.",
         variant: "destructive",
       });
       return;
@@ -247,9 +283,48 @@ export default function OrdenesCorte() {
 
       if (detallesError) throw detallesError;
 
+      // Crear las prendas
+      const prendas = prendasOrden.map(prenda => ({
+        orden_id: orden.id,
+        nombre_prenda: prenda.nombre
+      }));
+
+      const { data: prendasCreadas, error: prendasError } = await supabase
+        .from('prendas_orden')
+        .insert(prendas)
+        .select();
+
+      if (prendasError) throw prendasError;
+
+      // Crear los talles para cada prenda
+      if (prendasCreadas) {
+        const tallesData = [];
+        for (let i = 0; i < prendasCreadas.length; i++) {
+          const prenda = prendasCreadas[i];
+          const prendaOriginal = prendasOrden[i];
+          
+         if (prendaOriginal.talles && prendaOriginal.talles.length > 0) {
+            const tallesPrenda = prendaOriginal.talles.map(talleInfo => ({
+              prenda_id: prenda.id,
+              talle: talleInfo.talle,
+              cantidad: talleInfo.cantidad
+            }));
+            tallesData.push(...tallesPrenda);
+          }
+        }
+
+        if (tallesData.length > 0) {
+          const { error: tallesError } = await supabase
+            .from('talles_prenda')
+            .insert(tallesData);
+
+          if (tallesError) throw tallesError;
+        }
+      }
+
       toast({
         title: "Orden creada exitosamente",
-        description: `Orden de corte ${numeroLote} creada con ${telasSeleccionadas.length} tela(s).`,
+        description: `Orden de corte ${numeroLote} creada con ${telasSeleccionadas.length} tela(s) y ${prendasOrden.length} prenda(s).`,
       });
       
       setIsDialogOpen(false);
@@ -323,6 +398,114 @@ export default function OrdenesCorte() {
     setIsDeleteDialogOpen(true);
   };
 
+  const exportToExcel = async (orden: OrdenCorte) => {
+    try {
+      // Dynamically import xlsx to keep bundle size optimal
+      const XLSX = await import('xlsx');
+      
+      // Fetch order details with fabrics info
+      const { data: detalles, error } = await supabase
+        .from('detalle_ordenes_corte')
+        .select(`
+          *,
+          telas (
+            articulo,
+            color,
+            tipo,
+            descripcion,
+            patron
+          )
+        `)
+        .eq('orden_id', orden.id);
+
+      // Fetch prendas and their sizes
+      const { data: prendas, error: prendasError } = await supabase
+        .from('prendas_orden')
+        .select(`
+          *,
+          talles_prenda (
+            talle,
+            cantidad
+          )
+        `)
+        .eq('orden_id', orden.id);
+
+      if (error || prendasError) throw error || prendasError;
+
+      // Create workbook
+      const wb = XLSX.utils.book_new();
+
+      // Order summary sheet
+      const orderData = [
+        ['INFORMACIÓN DE LA ORDEN DE CORTE'],
+        ['Número de Lote:', orden.numero_lote],
+        ['Cliente:', orden.clientes?.nombre || 'Cliente no encontrado'],
+        ['Fecha de Creación:', new Date(orden.fecha_creacion).toLocaleDateString()],
+        ['Estado:', orden.estado === 'pendiente' ? 'Pendiente' : orden.estado === 'en_proceso' ? 'En Proceso' : orden.estado === 'completado' ? 'Completado' : orden.estado],
+        ['Notas:', orden.notas || 'Sin notas'],
+        [''],
+        ['DETALLES DE TELAS A CORTAR']
+      ];
+
+      if (detalles && detalles.length > 0) {
+        // Add headers for fabric details
+        orderData.push(['Artículo', 'Color', 'Tipo', 'Metros a Cortar', 'Observaciones']);
+        
+        detalles.forEach(detalle => {
+          orderData.push([
+            detalle.telas?.articulo || 'N/A',
+            detalle.telas?.color || 'N/A',
+            detalle.telas?.tipo || 'N/A',
+            detalle.metros_cortar.toString(),
+            detalle.observaciones || 'Sin observaciones'
+          ]);
+        });
+
+       // Add prendas and sizes information
+        if (prendas && Array.isArray(prendas) && prendas.length > 0) {
+          orderData.push([''], ['PRENDAS Y TALLES']);
+          orderData.push(['Prenda', 'Talle', 'Cantidad']);
+          
+          prendas.forEach(prenda => {
+            if (prenda.talles_prenda && Array.isArray(prenda.talles_prenda) && prenda.talles_prenda.length > 0) {
+              prenda.talles_prenda.forEach((talle: any) => {
+                orderData.push([
+                  prenda.nombre_prenda,
+                  talle.talle,
+                  talle.cantidad.toString()
+                ]);
+              });
+              } else {
+              // Si no hay talles, al menos mostrar la prenda
+              orderData.push([prenda.nombre_prenda, 'Sin talles definidos', '0']);
+            }
+          });
+        }
+      }
+
+      const ws = XLSX.utils.aoa_to_sheet(orderData);
+      XLSX.utils.book_append_sheet(wb, ws, 'Orden de Corte');
+
+      // Generate filename
+      const filename = `Orden_Corte_${orden.numero_lote}_${new Date().toISOString().split('T')[0]}.xlsx`;
+      
+      // Download file
+      XLSX.writeFile(wb, filename);
+
+      toast({
+        title: "Excel generado",
+        description: "El archivo se ha descargado correctamente.",
+      });
+    } catch (error) {
+      console.error('Error generating Excel:', error);
+      toast({
+        title: "Error",
+        description: "No se pudo generar el archivo Excel.",
+        variant: "destructive",
+      });
+    }
+  };
+
   const sendWhatsAppMessage = async (orden: OrdenCorte) => {
     try {
       // Fetch order details with fabrics info
@@ -341,6 +524,20 @@ export default function OrdenesCorte() {
 
       if (error) throw error;
 
+      // Fetch prendas and talles info
+      const { data: prendas, error: prendasError } = await supabase
+        .from('prendas_orden')
+        .select(`
+          *,
+          talles_prenda (
+            talle,
+            cantidad
+          )
+        `)
+        .eq('orden_id', orden.id);
+
+      if (prendasError) throw prendasError;
+
       let message = `*ORDEN DE CORTE*\n\n`;
       message += `📋 *Número de Lote:* ${orden.numero_lote}\n`;
       message += `👤 *Cliente:* ${orden.clientes?.nombre || 'Cliente no encontrado'}\n`;
@@ -356,6 +553,25 @@ export default function OrdenesCorte() {
           message += `   • Metros a cortar: ${detalle.metros_cortar}m\n`;
           if (detalle.observaciones) {
             message += `   • Observaciones: ${detalle.observaciones}\n`;
+            }
+          message += `\n`;
+        });
+      }
+
+      // Add prendas and talles information
+      if (prendas && prendas.length > 0) {
+        message += `👕 *PRENDAS Y TALLES:*\n\n`;
+        prendas.forEach((prenda, index) => {
+          message += `${index + 1}. *${prenda.nombre_prenda}*\n`;
+          if (prenda.talles_prenda && Array.isArray(prenda.talles_prenda) && prenda.talles_prenda.length > 0) {
+            const tallesOrdenados = prenda.talles_prenda
+              .sort((a: any, b: any) => Number(a.talle) - Number(b.talle));
+            message += `   • Talles: `;
+            tallesOrdenados.forEach((talle: any, talleIndex: number) => {
+              message += `${talle.talle}(${talle.cantidad})`;
+              if (talleIndex < tallesOrdenados.length - 1) message += `, `;
+            });
+            message += `\n`;
           }
           message += `\n`;
         });
@@ -463,30 +679,49 @@ export default function OrdenesCorte() {
                 <div>
                   <Label>Telas Disponibles del Cliente</Label>
                   {clienteSeleccionado ? (
-                    <div className="space-y-2 max-h-48 overflow-y-auto border rounded-md p-2">
-                      {telasCliente.length > 0 ? (
-                        telasCliente.map((tela) => (
-                          <div key={tela.id} className="flex items-center justify-between p-2 border rounded">
-                            <div className="flex-1">
-                              <p className="font-medium">{tela.articulo}</p>
-                              <p className="text-sm text-muted-foreground">
-                                {tela.color} - {tela.tipo} - {tela.metros}m
-                              </p>
+                    <div className="space-y-2">
+                      {/* Buscador de telas */}
+                      <div className="relative">
+                        <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
+                        <Input
+                          placeholder="Buscar tela por artículo, color o tipo..."
+                          value={fabricSearchTerm}
+                          onChange={(e) => setFabricSearchTerm(e.target.value)}
+                          className="pl-8"
+                        />
+                      </div>
+                      
+                      <div className="max-h-48 overflow-y-auto border rounded-md p-2">
+                        {telasCliente.length > 0 ? (
+                          telasCliente
+                            .filter(tela => 
+                              tela.articulo.toLowerCase().includes(fabricSearchTerm.toLowerCase()) ||
+                              tela.color.toLowerCase().includes(fabricSearchTerm.toLowerCase()) ||
+                              tela.tipo.toLowerCase().includes(fabricSearchTerm.toLowerCase())
+                            )
+                            .map((tela) => (
+                            <div key={tela.id} className="flex items-center justify-between p-2 border rounded">
+                              <div className="flex-1">
+                                <p className="font-medium">{tela.articulo}</p>
+                                <p className="text-sm text-muted-foreground">
+                                  {tela.color} - {tela.tipo} - {tela.metros}m
+                                </p>
+                              </div>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => agregarTelaAOrden(tela)}
+                              >
+                                <Plus className="h-3 w-3" />
+                              </Button>
                             </div>
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => agregarTelaAOrden(tela)}
-                            >
-                              <Plus className="h-3 w-3" />
-                            </Button>
-                          </div>
-                        ))
-                      ) : (
-                        <p className="text-muted-foreground text-center py-4">
-                          No hay telas disponibles para este cliente
-                        </p>
-                      )}
+                          ))
+                        ) : (
+                          <p className="text-muted-foreground text-center py-4">
+                            {fabricSearchTerm ? 'No se encontraron telas con esos criterios' : 'No hay telas disponibles para este cliente'}
+                          </p>
+                        )}
+                      </div>
                     </div>
                   ) : (
                     <p className="text-muted-foreground">Selecciona un cliente para ver sus telas</p>
@@ -531,6 +766,92 @@ export default function OrdenesCorte() {
                     </div>
                   ))}
                 </div>
+              </div>
+            )}
+
+            {/* Sección de Prendas */}
+            {telasSeleccionadas.length > 0 && (
+              <div className="mt-6">
+                <div className="flex justify-between items-center mb-3">
+                  <Label>Prendas a Crear</Label>
+                  <Button 
+                    size="sm" 
+                    variant="outline" 
+                    onClick={agregarPrenda}
+                  >
+                    <Plus className="h-3 w-3 mr-1" />
+                    Agregar Prenda
+                  </Button>
+                </div>
+                
+                {prendasOrden.length > 0 && (
+                  <div className="space-y-4">
+                    {prendasOrden.map((prenda, prendaIndex) => (
+                      <div key={prendaIndex} className="border rounded-md p-4 bg-background">
+                        <div className="flex items-center gap-2 mb-3">
+                          <Input
+                            placeholder="Nombre de la prenda..."
+                            value={prenda.nombre}
+                            onChange={(e) => actualizarNombrePrenda(prendaIndex, e.target.value)}
+                            className="flex-1"
+                          />
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => removerPrenda(prendaIndex)}
+                          >
+                            ×
+                          </Button>
+                        </div>
+{/* Tabla de talles para esta prenda */}
+                        <div className="mt-3">
+                          <Label className="text-sm font-medium">Talles para {prenda.nombre || 'esta prenda'}</Label>
+                          <div className="grid grid-cols-6 gap-2 mt-2">
+                            {tallesDisponibles.map((talle) => {
+                              const talleExistente = prenda.talles.find(t => t.talle === talle);
+                              return (
+                                <div key={talle} className="flex flex-col items-center">
+                                  <Label className="text-xs">{talle}</Label>
+                                  <Input
+                                    type="number"
+                                    min="0"
+                                    value={talleExistente?.cantidad || 0}
+                                    onChange={(e) => {
+                                      const nuevaCantidad = Number(e.target.value);
+                                      const nuevasTalles = [...prenda.talles];
+                                      const index = nuevasTalles.findIndex(t => t.talle === talle);
+                                      
+                                      if (nuevaCantidad > 0) {
+                                        if (index >= 0) {
+                                          nuevasTalles[index].cantidad = nuevaCantidad;
+                                        } else {
+                                          nuevasTalles.push({ talle, cantidad: nuevaCantidad });
+                                        }
+                                      } else {
+                                        if (index >= 0) {
+                                          nuevasTalles.splice(index, 1);
+                                        }
+                                      }
+                                      
+                                      actualizarTallesPrenda(prendaIndex, nuevasTalles);
+                                    }}
+                                    className="w-16 h-8 text-xs"
+                                  />
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                
+                {prendasOrden.length === 0 && (
+                  <p className="text-muted-foreground text-center py-4 border rounded-md">
+                    No hay prendas creadas. Haz clic en "Agregar Prenda" para comenzar.
+                  </p>
+                )}
               </div>
             )}
 
@@ -619,6 +940,14 @@ export default function OrdenesCorte() {
                           className="text-green-600 hover:text-green-700 hover:bg-green-50"
                         >
                           <MessageCircle className="h-4 w-4" />
+                        </Button>
+                        <Button 
+                          variant="ghost" 
+                          size="sm"
+                          onClick={() => exportToExcel(orden)}
+                          className="text-blue-600 hover:text-blue-700 hover:bg-blue-50"
+                        >
+                          <FileText className="h-4 w-4" />
                         </Button>
                         <Button 
                           variant="ghost" 
